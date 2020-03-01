@@ -229,20 +229,36 @@ Mat Conversion (Mat &image)
     cudaMemcpy(dev_Constant, constWidth, sizeof(constWidth), cudaMemcpyHostToDevice);
     cudaMemcpy(dev_FloatWindow, float_win, sizeof(float_win), cudaMemcpyHostToDevice);
 
-    // Count thread = Max side image
+    cudaEvent_t start, stop;
+    float gpuTime = 0.0f;
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start, 0);
+
     if(ENABLE_GRAYSCALE_CONVERSION)
     {
-        ConversionToGrayscale  <<<image.rows / 512 + 1, 512>>> (dev_Image, dev_Constant);
+        ConversionToGrayscale  <<<image.rows / 256 + 1, 256>>> (dev_Image, dev_Constant);
         cudaStatus = cudaDeviceSynchronize();
     }
 
     if(ENABLE_GAUSSIAN_BLUR_CONVERSION)
     {
-        ConversionGaussianHor  <<<image.rows / 512 + 1, 512>>> (dev_Image, dev_Constant, dev_FloatWindow);
+        ConversionGaussianHor  <<<image.rows / 256 + 1, 256>>> (dev_Image, dev_Constant, dev_FloatWindow);
         cudaStatus = cudaDeviceSynchronize();
-        ConversionGaussianVer  <<<image.cols / 512 + 1, 512>>> (dev_Image, dev_Constant, dev_FloatWindow);
+        ConversionGaussianVer  <<<image.cols / 256 + 1, 256>>> (dev_Image, dev_Constant, dev_FloatWindow);
         cudaStatus = cudaDeviceSynchronize();
     }
+
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+
+    cudaEventElapsedTime(&gpuTime, start, stop);
+    cout << "Time conversion: " << gpuTime << "ms" << endl;
+   
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     // malloc without deleting, move to Mat
     out_Image = (char*)std::malloc(sizeDataImage * sizeof(char));
