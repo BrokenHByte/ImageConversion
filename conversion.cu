@@ -189,6 +189,17 @@ __global__ void ConversionGaussianVer(char * image, const int * constants, const
     }
 }
 
+__host__ pair<int, int> getOptimalBlocksAndThreads(int needThread, const int middleCountThread = 256)
+{
+    if(needThread <= middleCountThread) 
+        return pair<int, int>(1, needThread);
+
+    float needBlock = 0.0f;
+    float reBlock = modf(1.0f * needThread / middleCountThread, &needBlock); 
+    int countThreadsInBlock = (reBlock / needBlock + 1.0f) * middleCountThread + 1.0f; 
+    return pair<int, int>(needBlock, countThreadsInBlock);
+}
+
 Mat Conversion (Mat &image)
 {
     int constWidth[] {image.cols, image.rows, HALF_WIN};
@@ -235,19 +246,21 @@ Mat Conversion (Mat &image)
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
+    auto blockThreads = getOptimalBlocksAndThreads(image.rows);
+    auto blockThreadsCol = getOptimalBlocksAndThreads(image.cols);
     cudaEventRecord(start, 0);
 
     if(ENABLE_GRAYSCALE_CONVERSION)
     {
-        ConversionToGrayscale  <<<image.rows / 256 + 1, 256>>> (dev_Image, dev_Constant);
+        ConversionToGrayscale  <<< get<0>(blockThreads), get<1>(blockThreads) >>> (dev_Image, dev_Constant);
         cudaStatus = cudaDeviceSynchronize();
     }
 
     if(ENABLE_GAUSSIAN_BLUR_CONVERSION)
     {
-        ConversionGaussianHor  <<<image.rows / 256 + 1, 256>>> (dev_Image, dev_Constant, dev_FloatWindow);
+        ConversionGaussianHor  <<< get<0>(blockThreads), get<1>(blockThreads) >>> (dev_Image, dev_Constant, dev_FloatWindow);
         cudaStatus = cudaDeviceSynchronize();
-        ConversionGaussianVer  <<<image.cols / 256 + 1, 256>>> (dev_Image, dev_Constant, dev_FloatWindow);
+        ConversionGaussianVer  <<< get<0>(blockThreadsCol), get<1>(blockThreadsCol) >>> (dev_Image, dev_Constant, dev_FloatWindow);
         cudaStatus = cudaDeviceSynchronize();
     }
 
